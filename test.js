@@ -1,71 +1,105 @@
-// Assuming data.js and model.js are loaded in the environment (e.g., via script tags in an HTML file in that order)
+// Assuming data.js and model.js are loaded
 
 function runTest() {
-  console.log("Starting economic model test (with Dynamic Pricing)...");
+  console.log("Starting economic model test (Goods, Recipes, Workshops)...");
 
-  if (typeof ResourceType === 'undefined') {
-    console.error("ResourceType is not defined. Make sure data.js is loaded.");
+  // --- Helper function to log settlement status ---
+  const logSettlementStatus = (settlement) => {
+    console.log(`--- Status for ${settlement.name} ---`);
+    console.log("Resources:");
+    for (const resourceType in ResourceType) {
+      const key = ResourceType[resourceType];
+      console.log(`  ${key}: ${settlement.getResourceQuantity(key)} (Price: ${settlement.getPrice(key) || 'N/A'})`);
+    }
+    console.log("Goods:");
+    for (const goodType in GoodsType) {
+      const key = GoodsType[goodType];
+      console.log(`  ${key}: ${settlement.getGoodQuantity(key)}`);
+    }
+    console.log("--------------------------");
+  };
+
+  // --- Test Setup ---
+  if (typeof ResourceType === 'undefined' || typeof GoodsType === 'undefined' || typeof Recipes === 'undefined') {
+    console.error("ResourceType, GoodsType, or Recipes not defined. Make sure data.js is loaded.");
     return;
   }
-  if (typeof Settlement === 'undefined') {
-    console.error("Settlement is not defined. Make sure model.js is loaded.");
+  if (typeof Settlement === 'undefined' || typeof Workshop === 'undefined') {
+    console.error("Settlement or Workshop not defined. Make sure model.js is loaded.");
     return;
   }
 
   // 1. Create a settlement
-  const mySettlement = new Settlement("Northwood");
+  const mySettlement = new Settlement("Craftown");
   console.log(`Created settlement: ${mySettlement.name}`);
 
-  // (Optional) Adjust pricing parameters if different from default for testing
-  // mySettlement.pricingParameters[ResourceType.IRON_ORE].basePrice = 15;
-  // mySettlement.pricingParameters[ResourceType.IRON_ORE].targetQuantity = 150;
-  // mySettlement.pricingParameters[ResourceType.IRON_ORE].scarcityMultiplier = 0.2;
-  console.log(`Pricing parameters for ${ResourceType.IRON_ORE}:`, mySettlement.pricingParameters[ResourceType.IRON_ORE]);
+  // 2. Add initial resources to the settlement
+  // (Manually, as raw resource production isn't the focus of this test)
+  mySettlement.resources[ResourceType.WOOD] = 50;
+  mySettlement.resources[ResourceType.IRON_ORE] = 30;
+  console.log("Added initial resources to Craftown.");
+  logSettlementStatus(mySettlement);
 
+  // 3. Create and add workshops
+  const shieldWorkshop = new Workshop(mySettlement, GoodsType.WOODEN_SHIELD);
+  mySettlement.addWorkshop(shieldWorkshop);
+  console.log(`Added Wooden Shield workshop to ${mySettlement.name}.`);
 
-  // 2. Set production rate for Iron Ore
-  mySettlement.setProductionRate(ResourceType.IRON_ORE, 10); // Produces 10 Iron Ore per update
-  console.log(`Set ${ResourceType.IRON_ORE} production rate to 10.`);
+  const daggerWorkshop = new Workshop(mySettlement, GoodsType.IRON_DAGGER);
+  mySettlement.addWorkshop(daggerWorkshop);
+  console.log(`Added Iron Dagger workshop to ${mySettlement.name}.`);
 
-  // 3. Check initial resource quantity and price
-  // Initial quantity is 0, so price should be higher than base
-  console.log(`Initial ${ResourceType.IRON_ORE} quantity: ${mySettlement.getResourceQuantity(ResourceType.IRON_ORE)}`);
-  console.log(`Initial ${ResourceType.IRON_ORE} price: ${mySettlement.getPrice(ResourceType.IRON_ORE)}`); // Should be basePrice + (targetQuantity - 0) * scarcityMultiplier
+  // 4. Run workshops a few times
+  console.log("Running workshops (Cycle 1)...");
+  mySettlement.runWorkshops();
+  logSettlementStatus(mySettlement);
+  // Expected: 1 Wooden Shield (cost 5 Wood), 1 Iron Dagger (cost 2 Iron Ore)
 
-  // 4. Simulate production until targetQuantity is reached
-  const targetQty = mySettlement.pricingParameters[ResourceType.IRON_ORE].targetQuantity;
-  console.log(`Simulating production until ${ResourceType.IRON_ORE} quantity reaches target of ${targetQty}...`);
-  let cycles = 0;
-  while(mySettlement.getResourceQuantity(ResourceType.IRON_ORE) < targetQty && cycles < 20) { // Safety break for cycles
-    mySettlement.updateProduction();
-    cycles++;
+  console.log("Running workshops (Cycle 2)...");
+  mySettlement.runWorkshops();
+  logSettlementStatus(mySettlement);
+  // Expected: 2 Wooden Shields total, 2 Iron Daggers total
+
+  // 5. Run workshops until resources are depleted for one item
+  console.log("Running workshops repeatedly until WOOD is likely depleted for shields...");
+  // Shield recipe: 5 WOOD. Initial WOOD: 50. Max shields from wood: 10.
+  // Dagger recipe: 2 IRON_ORE. Initial IRON_ORE: 30. Max daggers from iron: 15.
+  // We expect to make 8 more shields (total 10) and 8 more daggers (total 10) in the next 8 cycles.
+  for (let i = 0; i < 8; i++) {
+    console.log(`Workshop run cycle ${i + 3}`);
+    mySettlement.runWorkshops();
   }
-  console.log(`After ${cycles} production cycles:`);
-  console.log(`  ${ResourceType.IRON_ORE} quantity: ${mySettlement.getResourceQuantity(ResourceType.IRON_ORE)}`);
-  console.log(`  ${ResourceType.IRON_ORE} price (at target): ${mySettlement.getPrice(ResourceType.IRON_ORE)}`); // Should be close to basePrice
+  logSettlementStatus(mySettlement);
+  // Expected: Wood: 0 (50 - 10*5), Iron Ore: 10 (30 - 10*2)
+  // Wooden Shields: 10, Iron Daggers: 10
 
-  // 5. Simulate more production (creating surplus)
-  console.log("Simulating 5 more production updates (creating surplus)...");
-  for (let i = 0; i < 5; i++) {
-    mySettlement.updateProduction();
+  console.log("Trying to run workshops again (should produce nothing if resources depleted)...");
+  mySettlement.runWorkshops(); // Attempt another run
+  logSettlementStatus(mySettlement);
+  // Expected: No change in goods if resources for a particular good are gone.
+  // Daggers might still be produced if Iron Ore is left and Wood is out for shields.
+
+  // Test specific workshop production directly (optional)
+  console.log("Directly telling shield workshop to produce 1 (should fail if no wood)...");
+  const producedShields = shieldWorkshop.produce(1);
+  console.log(`Shield workshop directly produced: ${producedShields}`);
+  logSettlementStatus(mySettlement);
+
+
+  console.log("--- Trying to produce daggers until Iron Ore is depleted ---");
+  // Current Iron Ore: 10. Daggers: 10. Max 5 more daggers.
+  let daggersMade = 0;
+  for(let i=0; i<10; ++i) { // Try up to 10 times
+      const count = daggerWorkshop.produce(1);
+      if (count === 0) break;
+      daggersMade += count;
   }
-  console.log(`After surplus production:`);
-  console.log(`  ${ResourceType.IRON_ORE} quantity: ${mySettlement.getResourceQuantity(ResourceType.IRON_ORE)}`);
-  console.log(`  ${ResourceType.IRON_ORE} price (in surplus): ${mySettlement.getPrice(ResourceType.IRON_ORE)}`); // Should be lower than basePrice
+  console.log(`Made ${daggersMade} more daggers directly.`);
+  logSettlementStatus(mySettlement);
+  // Expected Iron Ore: 0 (if 10 initially, 5*2=10 consumed)
+  // Expected Iron Daggers: 15 (10 + 5)
 
-  // 6. Manually set quantity to very low (scarcity)
-  console.log("Manually setting quantity to a very low value (10)...");
-  mySettlement.resources[ResourceType.IRON_ORE] = 10;
-  console.log(`  ${ResourceType.IRON_ORE} quantity: ${mySettlement.getResourceQuantity(ResourceType.IRON_ORE)}`);
-  console.log(`  ${ResourceType.IRON_ORE} price (scarce): ${mySettlement.getPrice(ResourceType.IRON_ORE)}`); // Should be high
-
-  // 7. Manually set quantity to very high (extreme surplus)
-  console.log("Manually setting quantity to a very high value (500)...");
-  mySettlement.resources[ResourceType.IRON_ORE] = 500;
-  console.log(`  ${ResourceType.IRON_ORE} quantity: ${mySettlement.getResourceQuantity(ResourceType.IRON_ORE)}`);
-  console.log(`  ${ResourceType.IRON_ORE} price (extreme surplus): ${mySettlement.getPrice(ResourceType.IRON_ORE)}`); // Should be low, capped at minimum 1
-
-  console.log("Economic model dynamic pricing test finished.");
+  console.log("Economic model goods and workshop test finished.");
 }
 
 // Instructions to run: (same as before)
